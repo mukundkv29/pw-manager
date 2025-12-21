@@ -56,6 +56,15 @@ int create_new_file(char *username, char *password) {
         return 1;
     }
 
+    char anchor_string[8] = "_PW0_";
+
+    if (
+        fwrite(anchor_string, sizeof(anchor_string), 1, file) != 1
+    ) {
+        fprintf(stderr, "Error adding Achor string\n");
+        return 1;
+    }
+
     if (
         fwrite(user.username, sizeof(user.username), 1, file) !=1 ||
         fwrite(user.password, sizeof(user.password), 1, file) !=1
