@@ -1,16 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-const int USERNAME_MAX_LEN = 20;
-const int PASSWORD_MAX_LEN = 20;
-
-typedef struct
-{
-    char username[USERNAME_MAX_LEN];
-    char password[PASSWORD_MAX_LEN];
-} User;
-
-const char filename[] = "bfile.bin";
+#include "include/pw_man_main.h"
 
 int file_exists() {
     FILE *file;
@@ -56,8 +47,6 @@ int create_new_file(char *username, char *password) {
         return 1;
     }
 
-    char anchor_string[8] = "_PW0_";
-
     if (
         fwrite(anchor_string, sizeof(anchor_string), 1, file) != 1
     ) {
@@ -72,6 +61,17 @@ int create_new_file(char *username, char *password) {
         fprintf(stderr, "Error adding username and password\n");
         return 1;
     }
+
+    int total = 1;
+
+    if(
+        fwrite(&total, sizeof(int), 1, file) != 1
+    ) {
+        fprintf(stderr, "Error adding total number of entries in file\n");
+        return 1;
+    }
+
+    fclose(file);
 
     return 0;
 }
