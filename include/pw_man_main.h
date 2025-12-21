@@ -9,6 +9,13 @@ typedef struct
     char password[PASSWORD_MAX_LEN];
 } User;
 
+typedef struct {
+    char name[64];
+    char alias[128];
+    char password[128];
+} Credential;
+
+
 const char filename[] = "bfile.bin";
 
 const char anchor_string_version[8] = "_PW0_";

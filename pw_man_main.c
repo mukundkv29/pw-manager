@@ -16,9 +16,6 @@ int file_exists() {
     return 0;
 }
 
-// username 20 bytes
-// password 20 bytes
-
 int create_new_file(char *username, char *password) {
 
     printf("------------------------------");
