@@ -48,7 +48,7 @@ int create_new_file(char *username, char *password) {
     }
 
     if (
-        fwrite(anchor_string, sizeof(anchor_string), 1, file) != 1
+        fwrite(anchor_string_version, sizeof(anchor_string_version), 1, file) != 1
     ) {
         fprintf(stderr, "Error adding Achor string\n");
         return 1;
@@ -76,18 +76,58 @@ int create_new_file(char *username, char *password) {
     return 0;
 }
 
-// int read_count(char *username, char* password) {
-//     FILE *file;
-//     file = fopen(filename, "rb");
 
-//     if (file == NULL)
-//         return 1;
+int read_count(char *username, char* password) {
+    FILE *file;
+    file = fopen(filename, "rb");
+
+    if (file == NULL)
+        return 1;
     
+    char anchor_string[8];
+    if (
+        fread(anchor_string, sizeof(anchor_string), 1, file) != 1
+    ) {
+        fprintf(stderr, "Anchor string not found!\n");
+        return 1;
+    }
+
+    if(strcmp(anchor_string, anchor_string_version)) {
+        fprintf(stderr, "Mismatched Anchor String\n");
+        return 1;
+    }
     
-//     if (
-//         fread()
-//     )
-// }
+    User user;
+
+    if(
+        fread(user.username, sizeof(user.username), 1, file)!=1 ||
+        fread(user.password, sizeof(user.password), 1, file)!=1
+    ) {
+        fprintf(stderr, "Error fetching user credentials!\n");
+        return 1;
+    }
+
+    if(
+        strcmp(user.username, username) ||
+        strcmp(user.password, password)
+    ) {
+        fprintf(stderr, "Invalid username and/or password!\n");
+        return 1;
+    }
+
+    int total;
+
+    if(
+        fread(&total, sizeof(int), 1, file)!=1
+    ) {
+        fprintf(stderr, "Error fetching the entries count\n");
+        return 1;
+    }
+
+    printf("%d Entities count fetched!!\n", total);
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
 
@@ -109,20 +149,20 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if(strcmp(argv[1], "read") == 0 && argc < 4) {
+    if(strcmp(argv[1], "read") == 0) {
         if(argc != 4) {
-            fprintf(stderr, "Enter all arugments for create command\n");
+            fprintf(stderr, "Enter all arugments for read command\n");
             fprintf(stderr, "See --help\n");
             return 1;
         }
         if(read_count(argv[2], argv[3])) {
-            fprintf(stderr, "Error reading the file!\n");
+            fprintf(stderr, "Error while reading the file!\n");
             return 1;
         }
         return 0;
     }
     
-    fprintf(stderr, "Enter all arugments\n");
+    fprintf(stderr, "Invalid command\n");
     fprintf(stderr, "See --help\n");
 
     return 1;

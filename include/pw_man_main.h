@@ -11,4 +11,4 @@ typedef struct
 
 const char filename[] = "bfile.bin";
 
-const char anchor_string[8] = "_PW0_";
+const char anchor_string_version[8] = "_PW0_";
