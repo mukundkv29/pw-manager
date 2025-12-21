@@ -76,22 +76,52 @@ int create_new_file(char *username, char *password) {
     return 0;
 }
 
+// int read_count(char *username, char* password) {
+//     FILE *file;
+//     file = fopen(filename, "rb");
+
+//     if (file == NULL)
+//         return 1;
+    
+    
+//     if (
+//         fread()
+//     )
+// }
+
 int main(int argc, char *argv[]) {
 
     if(argc < 2) {
         return 1;
     }
 
-    if(argc < 4 && strcmp(argv[1], "create") == 0) {
-        fprintf(stderr, "Enter all arugments for create command\n");
-        fprintf(stderr, "See --help\n");
-        return 1;
-    }
-    
-    if(argc == 4 && !create_new_file(argv[2], argv[3])) {
+    if(strcmp(argv[1], "create") == 0) {
+        if(argc != 4) {
+            fprintf(stderr, "Enter all arugments for create command\n");
+            fprintf(stderr, "See --help\n");
+            return 1;
+        }
+        if(create_new_file(argv[2], argv[3])) {
+           fprintf(stderr, "Error creating file!\n");
+           return 1; 
+        }
         printf("File created!!\n");
         return 0;
     }
+
+    if(strcmp(argv[1], "read") == 0 && argc < 4) {
+        if(argc != 4) {
+            fprintf(stderr, "Enter all arugments for create command\n");
+            fprintf(stderr, "See --help\n");
+            return 1;
+        }
+        if(read_count(argv[2], argv[3])) {
+            fprintf(stderr, "Error reading the file!\n");
+            return 1;
+        }
+        return 0;
+    }
+    
     fprintf(stderr, "Enter all arugments\n");
     fprintf(stderr, "See --help\n");
 
