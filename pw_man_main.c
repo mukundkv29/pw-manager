@@ -62,27 +62,26 @@ int create_new_file(char *username, char *password) {
     return 0;
 }
 
-
-int read_count(char *username, char* password) {
+uint16_t check_header(User *user_credentials) {
     FILE *file;
     file = fopen(filename, "rb");
 
-    if (file == NULL)
-        return 1;
-    
+    if (file == NULL) {
+        return -1;
+    }
     char anchor_string[8];
     if (
         fread(anchor_string, sizeof(anchor_string), 1, file) != 1
     ) {
         fprintf(stderr, "Anchor string not found!\n");
-        return 1;
+        return -1;
     }
 
     if(strcmp(anchor_string, anchor_string_version)) {
         fprintf(stderr, "Mismatched Anchor String\n");
-        return 1;
+        return -1;
     }
-    
+
     User user;
 
     if(
@@ -90,28 +89,47 @@ int read_count(char *username, char* password) {
         fread(user.password, sizeof(user.password), 1, file)!=1
     ) {
         fprintf(stderr, "Error fetching user credentials!\n");
-        return 1;
+        return -1;
     }
 
     if(
-        strcmp(user.username, username) ||
-        strcmp(user.password, password)
+        strcmp(user.username, user_credentials->username) ||
+        strcmp(user.password, user_credentials->password)
     ) {
         fprintf(stderr, "Invalid username and/or password!\n");
-        return 1;
+        return -1;
     }
 
-    int total;
+    uint16_t total;
 
     if(
-        fread(&total, sizeof(int), 1, file)!=1
+        fread(&total, sizeof(total), 1, file)!=1
     ) {
         fprintf(stderr, "Error fetching the entries count\n");
-        return 1;
+        return -1;
     }
 
-    printf("%d Entities count fetched!!\n", total);
+    if(fclose(file) == EOF) {
+        fprintf(stderr, "Error while closing file\n");
+        return -1;
+    }
 
+    return total;
+}
+
+int read_count(char *username, char* password) {
+
+    User user;
+    strcpy(user.username, username);
+    strcpy(user.password, password);
+    int16_t total = check_header(&user);
+
+    if(total == -1) {
+        fprintf(stderr, "Error while checking User Credentials!\n");
+        return 1;
+    }
+    
+    printf("User authentication successful!!\n");
     return 0;
 }
 
