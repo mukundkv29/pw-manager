@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 #include "include/pw_man_main.h"
 
@@ -36,6 +38,13 @@ int create_new_file(char *username, char *password) {
     User user;
     strncpy(user.username, username, USERNAME_MAX_LEN);
     strncpy(user.password, password, PASSWORD_MAX_LEN);
+
+    Header *header =malloc(sizeof(Header));
+
+    strcpy(header->anchor_string, anchor_string_version);
+    header->user = user;
+    header->total_credentials=7;
+
     FILE* file;
     file = fopen(filename, "wb");
 
@@ -44,32 +53,12 @@ int create_new_file(char *username, char *password) {
         return 1;
     }
 
-    if (
-        fwrite(anchor_string_version, sizeof(anchor_string_version), 1, file) != 1
-    ) {
-        fprintf(stderr, "Error adding Achor string\n");
-        return 1;
-    }
-
-    if (
-        fwrite(user.username, sizeof(user.username), 1, file) !=1 ||
-        fwrite(user.password, sizeof(user.password), 1, file) !=1
-    ) {
-        fprintf(stderr, "Error adding username and password\n");
-        return 1;
-    }
-
-    int total = 1;
-
-    if(
-        fwrite(&total, sizeof(int), 1, file) != 1
-    ) {
-        fprintf(stderr, "Error adding total number of entries in file\n");
+    if(fwrite(header, sizeof(Header), 1, file)!=1) {
+        fprintf(stderr, "Error while creating header\n");
         return 1;
     }
 
     fclose(file);
-
     return 0;
 }
 
