@@ -43,7 +43,7 @@ int create_new_file(char *username, char *password) {
 
     strcpy(header->anchor_string, anchor_string_version);
     header->user = user;
-    header->total_credentials=7;
+    header->total_credentials=0;
 
     FILE* file;
     file = fopen(filename, "wb");
@@ -57,7 +57,7 @@ int create_new_file(char *username, char *password) {
         fprintf(stderr, "Error while creating header\n");
         return 1;
     }
-
+    free(header);
     fclose(file);
     return 0;
 }
@@ -96,6 +96,7 @@ uint16_t check_header(User *user_credentials) {
         strcmp(user.username, user_credentials->username) ||
         strcmp(user.password, user_credentials->password)
     ) {
+        printf("%s\t%s\n", user.username,user.password);
         fprintf(stderr, "Invalid username and/or password!\n");
         return -1;
     }
@@ -130,12 +131,78 @@ int read_count(char *username, char* password) {
     }
     
     printf("User authentication successful!!\n");
+    printf("Count: %d\n", total);
+    return 0;
+}
+
+int add_credential(int argc, char *argv[]) {
+    User user;
+    strcpy(user.username, argv[0]);
+    strcpy(user.password, argv[1]);
+    int16_t total = check_header(&user);
+
+    if(total<0) {
+        fprintf(stderr, "User authentication failed!\n");
+        return 1;
+    }
+
+    total++;
+
+    FILE* file;
+    file = fopen(filename, "rb+");
+    if(file == NULL) {
+        fprintf(stderr, "Error while opening file\n");
+        return 1;
+    }
+
+    if (fseek(file, sizeof(Header)-sizeof(uint16_t), SEEK_SET)) {
+        fprintf(stderr, "Error duing file positioning\n");
+        return 1;
+    }
+
+    if (fwrite(&total, sizeof(total), 1, file)!=1) {
+        fprintf(stderr, "Error while updating total\n");
+        return 1;
+    }
+    
+    Credential *credential = malloc(sizeof(Credential));
+    
+    strcpy(credential->alias, argv[2]);
+    strcpy(credential->password, argv[3]);
+    
+    if(argc == 5) {
+        strcpy(credential->website, argv[4]);
+    }else {
+        strcpy(credential->website, ".");
+    }
+    
+    if(fclose(file) == EOF) {
+        fprintf(stderr, "Error while closing file\n");
+        return -1;
+    }
+
+    // fseek(file, 0, SEEK_END);
+
+    file = fopen(filename, "ab");
+    if (fwrite(credential, sizeof(*credential), 1, file)!=1) {
+        fprintf(stderr, "Error while adding credential\n");
+        return 1;
+    }
+
+    free(credential);
+    if(fclose(file) == EOF) {
+        fprintf(stderr, "Error while closing file\n");
+        return -1;
+    }
+
     return 0;
 }
 
 int main(int argc, char *argv[]) {
 
     if(argc < 2) {
+        fprintf(stderr, "Invalid command\n");
+        fprintf(stderr, "See --help\n");
         return 1;
     }
 
@@ -163,6 +230,20 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error while reading the file!\n");
             return 1;
         }
+        return 0;
+    }
+
+    if(strcmp(argv[1], "add") == 0) { // add <username> <password> <alias> <password> <website>
+        if(argc != 6 && argc != 7) {
+            fprintf(stderr, "Enter all arugments for read command\n");
+            fprintf(stderr, "See --help\n");
+            return 1;
+        }
+        if(add_credential(argc-2, argv+2)) {
+            fprintf(stderr, "Error while adding the credential\n");
+            return 1;
+        }
+        printf("New Credential added!\n");
         return 0;
     }
     
