@@ -165,7 +165,6 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
     
-    // Credential *credential = malloc(sizeof(Credential));
     Credential *credential = calloc(1, sizeof(Credential));
     
     strcpy(credential->alias, argv[2]);
@@ -193,6 +192,55 @@ int add_credential(int argc, char *argv[]) {
         return -1;
     }
 
+    return 0;
+}
+
+int get_credential(int argc, char *argv[]) {
+    User user;
+    strcpy(user.username, argv[0]);
+    strcpy(user.password, argv[1]);
+    int16_t total = check_header(&user);
+
+    if(total<0) {
+        fprintf(stderr, "User authentication failed!\n");
+        return 1;
+    }
+
+    if(total==0) {
+        fprintf(stderr, "No record is present!\n");
+        return 1;
+    }
+
+    FILE *file;
+    file=fopen(filename, "rb");
+
+    if (file==NULL) {
+        fprintf(stderr, "Error while opening file!\n");
+        return 1;
+    }
+
+    fseek(file, sizeof(Header), SEEK_SET);
+
+    int8_t found=0;
+    for(int i=0;i<total;i++) {
+        Credential current_credential;
+        if(fread(&current_credential, sizeof(Credential), 1, file)!=1){
+            fprintf(stderr, "Error while reading!\n");
+            return 1;
+        }
+
+        if(strcmp(current_credential.website, argv[2])==0) {
+            found=1;
+            printf("\nAlias: %s\n", current_credential.alias);
+            printf("Password: %s\n", current_credential.password);
+        }
+    }
+
+    if(!found) {
+        printf("No record found!\n");
+    }
+
+    fclose(file);
     return 0;
 }
 
@@ -242,6 +290,22 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         printf("New Credential added!\n");
+        return 0;
+    }
+
+    if(strcmp(argv[1], "get")==0) { // get <username> <password> <website>
+        if(argc != 5) {
+            fprintf(stderr, "Enter all arugments for read command\n");
+            fprintf(stderr, "See --help\n");
+            return 1;
+        }
+        printf("Searching records...\n");
+        printf("-----------------------------\n");
+        if(get_credential(argc-2, argv+2)) {
+            fprintf(stderr, "Error while getting the credential\n");
+            return 1;
+        }
+        printf("-----------------------------\n");
         return 0;
     }
     
