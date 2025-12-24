@@ -165,7 +165,8 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
     
-    Credential *credential = malloc(sizeof(Credential));
+    // Credential *credential = malloc(sizeof(Credential));
+    Credential *credential = calloc(1, sizeof(Credential));
     
     strcpy(credential->alias, argv[2]);
     strcpy(credential->password, argv[3]);
@@ -180,9 +181,6 @@ int add_credential(int argc, char *argv[]) {
         fprintf(stderr, "Error while closing file\n");
         return -1;
     }
-
-    // fseek(file, 0, SEEK_END);
-
     file = fopen(filename, "ab");
     if (fwrite(credential, sizeof(*credential), 1, file)!=1) {
         fprintf(stderr, "Error while adding credential\n");
