@@ -2,8 +2,82 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
+#include <openssl/sha.h>
 
 #include "include/pw_man_main.h"
+
+void derive_key(const char *password, const unsigned char *salt, unsigned char *key, unsigned char *iv) {
+    PKCS5_PBKDF2_HMAC(password, strlen(password), salt, SALT_LEN, 1000, EVP_sha256(), KEY_LEN, key);
+    unsigned char temp[SALT_LEN+4];
+    memcpy(temp, salt, SALT_LEN);
+    memcpy(temp+SALT_LEN, "IV", 2);
+
+    PKCS5_PBKDF2_HMAC(password, strlen(password), temp, SALT_LEN+2, 1000, EVP_sha256(), IV_LEN, iv);
+}
+
+int encrypt_credential(Credential *cred, unsigned char *key, unsigned char *iv, unsigned char *ciphertext) {
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    int ciphertext_len;
+
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        return -1;
+    }
+
+    if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+
+    if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, 
+                              (unsigned char*)cred, sizeof(Credential))) {
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    ciphertext_len = len;
+
+    if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    ciphertext_len += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+    return ciphertext_len;
+}
+
+int decrypt_credential(unsigned char *ciphertext, int ciphertext_len, unsigned char *key, unsigned char *iv, Credential *cred) {
+    EVP_CIPHER_CTX *ctx;
+    int len;
+    int plaintext_len;
+
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        return -1;
+    }
+
+    if(1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+
+    if(1 != EVP_DecryptUpdate(ctx, (unsigned char*)cred, &len, 
+                              ciphertext, ciphertext_len)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    plaintext_len = len;
+
+    if(1 != EVP_DecryptFinal_ex(ctx, (unsigned char*)cred + len, &len)) {
+        EVP_CIPHER_CTX_free(ctx);
+        return -1;
+    }
+    plaintext_len += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+    return plaintext_len;
+}
 
 int file_exists() {
     FILE *file;
@@ -19,44 +93,57 @@ int file_exists() {
 }
 
 int create_new_file(char *username, char *password) {
-
     printf("------------------------------");
     printf("\nCreating file...\n");
     printf("Entered Username: %s\n", username);
-    if(strlen(username) > 20) {
-        fprintf(stderr, "Too long username! Length should be less than 20!\n");
+    if(strlen(username) > USERNAME_MAX_LEN - 1) {
+        fprintf(stderr, "Too long username!\n");
         printf("------------------------------\n");
         return 1;
     }
     printf("Entered Password: %s\n", password);
-    if(strlen(password) > 20) {
-        fprintf(stderr, "Too long password! Length should be less than 20!\n");
+    if(strlen(password) > PASSWORD_MAX_LEN - 1) {
+        fprintf(stderr, "Too long password!\n");
         printf("------------------------------\n");
         return 1;
     }
     printf("------------------------------\n");
+    
     User user;
     strncpy(user.username, username, USERNAME_MAX_LEN);
     strncpy(user.password, password, PASSWORD_MAX_LEN);
 
-    Header *header =malloc(sizeof(Header));
+    Header *header = calloc(1, sizeof(Header));
+    if(!header) {
+        fprintf(stderr, "Memory allocation failed!\n");
+        return 1;
+    }
 
     strcpy(header->anchor_string, anchor_string_version);
+
+    if(RAND_bytes(header->salt, SALT_LEN) != 1) {
+        fprintf(stderr, "Failed to generate random salt!\n");
+        free(header);
+        return 1;
+    }
+    
     header->user = user;
-    header->total_credentials=0;
+    header->total_credentials = 0;
 
-    FILE* file;
-    file = fopen(filename, "wb");
-
+    FILE* file = fopen(filename, "wb");
     if (file == NULL) {
         fprintf(stderr, "Error creating file!\n");
+        free(header);
         return 1;
     }
 
-    if(fwrite(header, sizeof(Header), 1, file)!=1) {
+    if(fwrite(header, sizeof(Header), 1, file) != 1) {
         fprintf(stderr, "Error while creating header\n");
+        free(header);
+        fclose(file);
         return 1;
     }
+    
     free(header);
     fclose(file);
     return 0;
@@ -69,52 +156,50 @@ uint16_t check_header(User *user_credentials) {
     if (file == NULL) {
         return -1;
     }
+    
     char anchor_string[8];
-    if (
-        fread(anchor_string, sizeof(anchor_string), 1, file) != 1
-    ) {
+    if (fread(anchor_string, sizeof(anchor_string), 1, file) != 1) {
         fprintf(stderr, "Anchor string not found!\n");
+        fclose(file);
         return -1;
     }
 
     if(strcmp(anchor_string, anchor_string_version)) {
         fprintf(stderr, "Mismatched Anchor String\n");
+        fclose(file);
+        return -1;
+    }
+
+    unsigned char salt[SALT_LEN];
+    if (fread(salt, SALT_LEN, 1, file) != 1) {
+        fprintf(stderr, "Error reading salt!\n");
+        fclose(file);
         return -1;
     }
 
     User user;
-
-    if(
-        fread(user.username, sizeof(user.username), 1, file)!=1 ||
-        fread(user.password, sizeof(user.password), 1, file)!=1
-    ) {
+    if(fread(user.username, sizeof(user.username), 1, file)!=1 ||
+       fread(user.password, sizeof(user.password), 1, file)!=1) {
         fprintf(stderr, "Error fetching user credentials!\n");
+        fclose(file);
         return -1;
     }
 
-    if(
-        strcmp(user.username, user_credentials->username) ||
-        strcmp(user.password, user_credentials->password)
-    ) {
-        printf("%s\t%s\n", user.username,user.password);
+    if(strcmp(user.username, user_credentials->username) ||
+       strcmp(user.password, user_credentials->password)) {
         fprintf(stderr, "Invalid username and/or password!\n");
+        fclose(file);
         return -1;
     }
 
     uint16_t total;
-
-    if(
-        fread(&total, sizeof(total), 1, file)!=1
-    ) {
+    if(fread(&total, sizeof(total), 1, file)!=1) {
         fprintf(stderr, "Error fetching the entries count\n");
+        fclose(file);
         return -1;
     }
 
-    if(fclose(file) == EOF) {
-        fprintf(stderr, "Error while closing file\n");
-        return -1;
-    }
-
+    fclose(file);
     return total;
 }
 
