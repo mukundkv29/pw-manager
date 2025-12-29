@@ -1,24 +1,32 @@
-#pragma once
-#include <openssl/evp.h>
-#include <openssl/rand.h>
-#include <openssl/sha.h>
+#ifndef PW_MAN_MAIN_H
+#define PW_MAN_MAIN_H
 
-#define USERNAME_MAX_LEN 16
-#define PASSWORD_MAX_LEN 16
-#define CREDENTIAL_ALIAS_MAX_LEN 16
-#define CREDENTIAL_PASSWORD_MAX_LEN 32 
-#define CREDENTIAL_WEBSITE_MAX_LEN 32
+#include <stdint.h>
+
 #define SALT_LEN 16
 #define KEY_LEN 32
 #define IV_LEN 16
 
-const char anchor_string_version[8] = "_PW0_";
+#define USERNAME_MAX_LEN 64
+#define PASSWORD_MAX_LEN 128
 
-typedef struct
-{
+#define ALIAS_MAX_LEN 64
+#define CRED_PASSWORD_MAX_LEN 128
+#define WEBSITE_MAX_LEN 256
+
+static const char* filename = "bfile.bin";
+static const char* anchor_string_version = "_PW0_";
+
+typedef struct {
     char username[USERNAME_MAX_LEN];
     char password[PASSWORD_MAX_LEN];
 } User;
+
+typedef struct {
+    char alias[ALIAS_MAX_LEN];
+    char password[CRED_PASSWORD_MAX_LEN];
+    char website[WEBSITE_MAX_LEN];
+} Credential;
 
 typedef struct {
     char anchor_string[8];
@@ -27,17 +35,4 @@ typedef struct {
     uint16_t total_credentials;
 } Header;
 
-typedef struct {
-    char alias[CREDENTIAL_ALIAS_MAX_LEN];
-    char password[CREDENTIAL_PASSWORD_MAX_LEN];
-    char website[CREDENTIAL_WEBSITE_MAX_LEN];
-} Credential;
-
-const char filename[] = "bfile.bin";
-
-void derive_key(const char *password, const unsigned char *salt, 
-                unsigned char *key, unsigned char *iv);
-int encrypt_credential(Credential *cred, unsigned char *key, 
-                      unsigned char *iv, unsigned char *ciphertext);
-int decrypt_credential(unsigned char *ciphertext, int ciphertext_len,
-                      unsigned char *key, unsigned char *iv, Credential *cred);
+#endif

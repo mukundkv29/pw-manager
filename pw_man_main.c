@@ -221,62 +221,148 @@ int read_count(char *username, char* password) {
 }
 
 int add_credential(int argc, char *argv[]) {
+    // argv[0] = username
+    // argv[1] = password (master)
+    // argv[2] = alias
+    // argv[3] = credential password
+    // argv[4] = website (optional)
+
     User user;
     strcpy(user.username, argv[0]);
     strcpy(user.password, argv[1]);
-    int16_t total = check_header(&user);
 
-    if(total<0) {
+    int16_t total = check_header(&user);
+    if(total < 0) {
         fprintf(stderr, "User authentication failed!\n");
         return 1;
     }
-
     total++;
-
-    FILE* file;
-    file = fopen(filename, "rb+");
+    FILE* file = fopen(filename, "rb+");
     if(file == NULL) {
         fprintf(stderr, "Error while opening file\n");
         return 1;
     }
 
-    if (fseek(file, sizeof(Header)-sizeof(uint16_t), SEEK_SET)) {
-        fprintf(stderr, "Error duing file positioning\n");
+    // Seek to the total_credentials field in header
+    // Position = anchor(8) + salt(16) + User(USERNAME_MAX_LEN + PASSWORD_MAX_LEN)
+    long total_position = 8 + SALT_LEN + sizeof(User);
+    if(fseek(file, total_position, SEEK_SET) != 0) {
+        fprintf(stderr, "Error during file positioning\n");
+        fclose(file);
         return 1;
     }
 
-    if (fwrite(&total, sizeof(total), 1, file)!=1) {
+    if(fwrite(&total, sizeof(total), 1, file) != 1) {
         fprintf(stderr, "Error while updating total\n");
+        fclose(file);
         return 1;
     }
     
+    fclose(file);
+
+    // ========== ENCRYPTION STARTS HERE ==========
     Credential *credential = calloc(1, sizeof(Credential));
+    if(!credential) {
+        fprintf(stderr, "Memory allocation failed!\n");
+        return 1;
+    }
     
+    if(strlen(argv[2]) >= ALIAS_MAX_LEN) {
+        fprintf(stderr, "Alias too long! Max %d characters\n", ALIAS_MAX_LEN - 1);
+        free(credential);
+        return 1;
+    }
     strcpy(credential->alias, argv[2]);
+    
+    if(strlen(argv[3]) >= CRED_PASSWORD_MAX_LEN) {
+        fprintf(stderr, "Password too long! Max %d characters\n", CRED_PASSWORD_MAX_LEN - 1);
+        free(credential);
+        return 1;
+    }
     strcpy(credential->password, argv[3]);
     
     if(argc == 5) {
+        if(strlen(argv[4]) >= WEBSITE_MAX_LEN) {
+            fprintf(stderr, "Website too long! Max %d characters\n", WEBSITE_MAX_LEN - 1);
+            free(credential);
+            return 1;
+        }
         strcpy(credential->website, argv[4]);
-    }else {
+    } else {
         strcpy(credential->website, ".");
     }
-    
-    if(fclose(file) == EOF) {
-        fprintf(stderr, "Error while closing file\n");
-        return -1;
+
+    file = fopen(filename, "rb");
+    if(file == NULL) {
+        fprintf(stderr, "Error opening file to read salt\n");
+        free(credential);
+        return 1;
     }
-    file = fopen(filename, "ab");
-    if (fwrite(credential, sizeof(*credential), 1, file)!=1) {
-        fprintf(stderr, "Error while adding credential\n");
+    
+    unsigned char salt[SALT_LEN];
+    if(fseek(file, 8, SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking to salt\n");
+        fclose(file);
+        free(credential);
+        return 1;
+    }
+    
+    if(fread(salt, SALT_LEN, 1, file) != 1) {
+        fprintf(stderr, "Error reading salt\n");
+        fclose(file);
+        free(credential);
+        return 1;
+    }
+    fclose(file);
+
+    unsigned char key[KEY_LEN];
+    unsigned char iv[IV_LEN];
+    derive_key(user.password, salt, key, iv);
+
+    // Encrypt the credential
+    // AES in CBC mode can produce output slightly larger than input (due to padding)...
+    // Maximum padding is 16 bytes (one AES block)
+    unsigned char ciphertext[sizeof(Credential) + 16];
+    int ciphertext_len = encrypt_credential(credential, key, iv, ciphertext);
+    
+    if(ciphertext_len < 0) {
+        fprintf(stderr, "Encryption failed!\n");
+        free(credential);
         return 1;
     }
 
-    free(credential);
-    if(fclose(file) == EOF) {
-        fprintf(stderr, "Error while closing file\n");
-        return -1;
+    // Write encrypted credential to file
+    file = fopen(filename, "ab");
+    if(file == NULL) {
+        fprintf(stderr, "Error opening file for appending\n");
+        free(credential);
+        return 1;
     }
 
+    // Write the ciphertext length first (so we know how much to read later)
+    if(fwrite(&ciphertext_len, sizeof(int), 1, file) != 1) {
+        fprintf(stderr, "Error writing ciphertext length\n");
+        fclose(file);
+        free(credential);
+        return 1;
+    }
+    
+    // Write the actual encrypted data
+    if(fwrite(ciphertext, ciphertext_len, 1, file) != 1) {
+        fprintf(stderr, "Error writing encrypted credential\n");
+        fclose(file);
+        free(credential);
+        return 1;
+    }
+
+    // Clean up
+    free(credential);
+    fclose(file);
+    
+    // Clear sensitive data from memory
+    memset(key, 0, KEY_LEN);
+    memset(iv, 0, IV_LEN);
+    
     return 0;
 }
 
