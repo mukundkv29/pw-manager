@@ -7,8 +7,8 @@
 #define KEY_LEN 32
 #define IV_LEN 16
 
-#define USERNAME_MAX_LEN 64
-#define PASSWORD_MAX_LEN 128
+#define USERNAME_MAX_LEN 16
+#define PASSWORD_MAX_LEN 32
 
 #define ALIAS_MAX_LEN 64
 #define CRED_PASSWORD_MAX_LEN 128
@@ -19,7 +19,7 @@ static const char* anchor_string_version = "_PW0_";
 
 typedef struct {
     char username[USERNAME_MAX_LEN];
-    char password[PASSWORD_MAX_LEN];
+    unsigned char password_hash[PASSWORD_MAX_LEN];
 } User;
 
 typedef struct {

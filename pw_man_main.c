@@ -111,8 +111,7 @@ int create_new_file(char *username, char *password) {
     
     User user;
     strncpy(user.username, username, USERNAME_MAX_LEN);
-    strncpy(user.password, password, PASSWORD_MAX_LEN);
-
+    
     Header *header = calloc(1, sizeof(Header));
     if(!header) {
         fprintf(stderr, "Memory allocation failed!\n");
@@ -126,6 +125,11 @@ int create_new_file(char *username, char *password) {
         free(header);
         return 1;
     }
+    
+    unsigned char password_hash[32];
+    PKCS5_PBKDF2_HMAC(password, strlen(password), header->salt, SALT_LEN, 100000, EVP_sha256(), 32, password_hash);
+
+    memcpy(user.password_hash, password_hash, 32);
     
     header->user = user;
     header->total_credentials = 0;
@@ -177,23 +181,35 @@ uint16_t check_header(User *user_credentials) {
         return -1;
     }
 
-    User user;
-    if(fread(user.username, sizeof(user.username), 1, file)!=1 ||
-       fread(user.password, sizeof(user.password), 1, file)!=1) {
+    User stored_user;
+    if(fread(stored_user.username, sizeof(stored_user.username), 1, file) != 1 ||
+       fread(stored_user.password_hash, sizeof(stored_user.password_hash), 1, file) != 1) {
         fprintf(stderr, "Error fetching user credentials!\n");
         fclose(file);
         return -1;
     }
 
-    if(strcmp(user.username, user_credentials->username) ||
-       strcmp(user.password, user_credentials->password)) {
-        fprintf(stderr, "Invalid username and/or password!\n");
+    if(strcmp(stored_user.username, user_credentials->username) != 0) {
+        fprintf(stderr, "Invalid username!\n");
+        fclose(file);
+        return -1;
+    }
+
+    unsigned char input_password_hash[32];
+    PKCS5_PBKDF2_HMAC(user_credentials->password_hash, strlen(user_credentials->password_hash),
+                      salt, SALT_LEN,
+                      100000,
+                      EVP_sha256(),
+                      32, input_password_hash);
+    
+    if(memcmp(stored_user.password_hash, input_password_hash, 32) != 0) {
+        fprintf(stderr, "Invalid password!\n");
         fclose(file);
         return -1;
     }
 
     uint16_t total;
-    if(fread(&total, sizeof(total), 1, file)!=1) {
+    if(fread(&total, sizeof(total), 1, file) != 1) {
         fprintf(stderr, "Error fetching the entries count\n");
         fclose(file);
         return -1;
@@ -207,7 +223,7 @@ int read_count(char *username, char* password) {
 
     User user;
     strcpy(user.username, username);
-    strcpy(user.password, password);
+    strcpy(user.password_hash, password);
     int16_t total = check_header(&user);
 
     if(total == -1) {
@@ -221,30 +237,26 @@ int read_count(char *username, char* password) {
 }
 
 int add_credential(int argc, char *argv[]) {
-    // argv[0] = username
-    // argv[1] = password (master)
-    // argv[2] = alias
-    // argv[3] = credential password
-    // argv[4] = website (optional)
-
     User user;
     strcpy(user.username, argv[0]);
-    strcpy(user.password, argv[1]);
+    char original_password[PASSWORD_MAX_LEN];
+    strcpy(original_password, argv[1]);
+    strcpy(user.password_hash, argv[1]);
 
     int16_t total = check_header(&user);
     if(total < 0) {
         fprintf(stderr, "User authentication failed!\n");
         return 1;
     }
+
     total++;
+
     FILE* file = fopen(filename, "rb+");
     if(file == NULL) {
         fprintf(stderr, "Error while opening file\n");
         return 1;
     }
 
-    // Seek to the total_credentials field in header
-    // Position = anchor(8) + salt(16) + User(USERNAME_MAX_LEN + PASSWORD_MAX_LEN)
     long total_position = 8 + SALT_LEN + sizeof(User);
     if(fseek(file, total_position, SEEK_SET) != 0) {
         fprintf(stderr, "Error during file positioning\n");
@@ -260,7 +272,6 @@ int add_credential(int argc, char *argv[]) {
     
     fclose(file);
 
-    // ========== ENCRYPTION STARTS HERE ==========
     Credential *credential = calloc(1, sizeof(Credential));
     if(!credential) {
         fprintf(stderr, "Memory allocation failed!\n");
@@ -317,11 +328,8 @@ int add_credential(int argc, char *argv[]) {
 
     unsigned char key[KEY_LEN];
     unsigned char iv[IV_LEN];
-    derive_key(user.password, salt, key, iv);
+    derive_key(original_password, salt, key, iv);
 
-    // Encrypt the credential
-    // AES in CBC mode can produce output slightly larger than input (due to padding)...
-    // Maximum padding is 16 bytes (one AES block)
     unsigned char ciphertext[sizeof(Credential) + 16];
     int ciphertext_len = encrypt_credential(credential, key, iv, ciphertext);
     
@@ -331,7 +339,6 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
 
-    // Write encrypted credential to file
     file = fopen(filename, "ab");
     if(file == NULL) {
         fprintf(stderr, "Error opening file for appending\n");
@@ -339,7 +346,6 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
 
-    // Write the ciphertext length first (so we know how much to read later)
     if(fwrite(&ciphertext_len, sizeof(int), 1, file) != 1) {
         fprintf(stderr, "Error writing ciphertext length\n");
         fclose(file);
@@ -347,7 +353,6 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
     
-    // Write the actual encrypted data
     if(fwrite(ciphertext, ciphertext_len, 1, file) != 1) {
         fprintf(stderr, "Error writing encrypted credential\n");
         fclose(file);
@@ -355,40 +360,41 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
 
-    // Clean up
     free(credential);
     fclose(file);
     
-    // Clear sensitive data from memory
     memset(key, 0, KEY_LEN);
     memset(iv, 0, IV_LEN);
+    memset(original_password, 0, PASSWORD_MAX_LEN);
     
     return 0;
 }
 
 int get_credential(int argc, char *argv[]) {
-    // argv[0] = username
-    // argv[1] = password (master)
-    // argv[2] = website
-    
     User user;
     strcpy(user.username, argv[0]);
-    strcpy(user.password, argv[1]);
-
+    
+    char original_password[PASSWORD_MAX_LEN];
+    strcpy(original_password, argv[1]);
+    strcpy(user.password_hash, argv[1]);
+    
     int16_t total = check_header(&user);
     if(total < 0) {
         fprintf(stderr, "User authentication failed!\n");
+        memset(original_password, 0, PASSWORD_MAX_LEN);
         return 1;
     }
 
     if(total == 0) {
         fprintf(stderr, "No records present!\n");
+        memset(original_password, 0, PASSWORD_MAX_LEN);
         return 1;
     }
 
     FILE *file = fopen(filename, "rb");
     if(file == NULL) {
         fprintf(stderr, "Error while opening file!\n");
+        memset(original_password, 0, PASSWORD_MAX_LEN);
         return 1;
     }
 
@@ -396,28 +402,32 @@ int get_credential(int argc, char *argv[]) {
     if(fseek(file, 8, SEEK_SET) != 0) {
         fprintf(stderr, "Error seeking to salt\n");
         fclose(file);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
         return 1;
     }
     
     if(fread(salt, SALT_LEN, 1, file) != 1) {
         fprintf(stderr, "Error reading salt\n");
         fclose(file);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
         return 1;
     }
 
     unsigned char key[KEY_LEN];
     unsigned char iv[IV_LEN];
-    derive_key(user.password, salt, key, iv);
+    derive_key(original_password, salt, key, iv);
 
     if(fseek(file, sizeof(Header), SEEK_SET) != 0) {
         fprintf(stderr, "Error seeking to credentials\n");
         fclose(file);
         memset(key, 0, KEY_LEN);
         memset(iv, 0, IV_LEN);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
         return 1;
     }
 
     int8_t found = 0;
+    
     for(int i = 0; i < total; i++) {
         int ciphertext_len;
         if(fread(&ciphertext_len, sizeof(int), 1, file) != 1) {
@@ -425,25 +435,31 @@ int get_credential(int argc, char *argv[]) {
             fclose(file);
             memset(key, 0, KEY_LEN);
             memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
             return 1;
         }
+
         if(ciphertext_len <= 0 || ciphertext_len > sizeof(Credential) + 32) {
             fprintf(stderr, "Invalid ciphertext length: %d\n", ciphertext_len);
             fclose(file);
             memset(key, 0, KEY_LEN);
             memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
             return 1;
         }
+
         unsigned char ciphertext[ciphertext_len];
         if(fread(ciphertext, ciphertext_len, 1, file) != 1) {
             fprintf(stderr, "Error reading encrypted credential at position %d!\n", i);
             fclose(file);
             memset(key, 0, KEY_LEN);
             memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
             return 1;
         }
+
         Credential current_credential;
-        memset(&current_credential, 0, sizeof(Credential));  // Clear memory first
+        memset(&current_credential, 0, sizeof(Credential));
         
         int plaintext_len = decrypt_credential(ciphertext, ciphertext_len, 
                                                key, iv, &current_credential);
@@ -453,15 +469,17 @@ int get_credential(int argc, char *argv[]) {
             fclose(file);
             memset(key, 0, KEY_LEN);
             memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
             return 1;
         }
+
         if(strcmp(current_credential.website, argv[2]) == 0) {
             found = 1;
             printf("\nAlias: %s\n", current_credential.alias);
             printf("Password: %s\n", current_credential.password);
             printf("Website: %s\n", current_credential.website);
         }
-
+        
         memset(&current_credential, 0, sizeof(Credential));
     }
 
@@ -472,6 +490,7 @@ int get_credential(int argc, char *argv[]) {
     fclose(file);
     memset(key, 0, KEY_LEN);
     memset(iv, 0, IV_LEN);
+    memset(original_password, 0, PASSWORD_MAX_LEN);
     
     return 0;
 }
