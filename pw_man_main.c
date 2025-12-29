@@ -367,51 +367,112 @@ int add_credential(int argc, char *argv[]) {
 }
 
 int get_credential(int argc, char *argv[]) {
+    // argv[0] = username
+    // argv[1] = password (master)
+    // argv[2] = website
+    
     User user;
     strcpy(user.username, argv[0]);
     strcpy(user.password, argv[1]);
-    int16_t total = check_header(&user);
 
-    if(total<0) {
+    int16_t total = check_header(&user);
+    if(total < 0) {
         fprintf(stderr, "User authentication failed!\n");
         return 1;
     }
 
-    if(total==0) {
-        fprintf(stderr, "No record is present!\n");
+    if(total == 0) {
+        fprintf(stderr, "No records present!\n");
         return 1;
     }
 
-    FILE *file;
-    file=fopen(filename, "rb");
-
-    if (file==NULL) {
+    FILE *file = fopen(filename, "rb");
+    if(file == NULL) {
         fprintf(stderr, "Error while opening file!\n");
         return 1;
     }
 
-    fseek(file, sizeof(Header), SEEK_SET);
+    unsigned char salt[SALT_LEN];
+    if(fseek(file, 8, SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking to salt\n");
+        fclose(file);
+        return 1;
+    }
+    
+    if(fread(salt, SALT_LEN, 1, file) != 1) {
+        fprintf(stderr, "Error reading salt\n");
+        fclose(file);
+        return 1;
+    }
 
-    int8_t found=0;
-    for(int i=0;i<total;i++) {
-        Credential current_credential;
-        if(fread(&current_credential, sizeof(Credential), 1, file)!=1){
-            fprintf(stderr, "Error while reading!\n");
+    unsigned char key[KEY_LEN];
+    unsigned char iv[IV_LEN];
+    derive_key(user.password, salt, key, iv);
+
+    if(fseek(file, sizeof(Header), SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking to credentials\n");
+        fclose(file);
+        memset(key, 0, KEY_LEN);
+        memset(iv, 0, IV_LEN);
+        return 1;
+    }
+
+    int8_t found = 0;
+    for(int i = 0; i < total; i++) {
+        int ciphertext_len;
+        if(fread(&ciphertext_len, sizeof(int), 1, file) != 1) {
+            fprintf(stderr, "Error reading ciphertext length at position %d!\n", i);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
             return 1;
         }
-
-        if(strcmp(current_credential.website, argv[2])==0) {
-            found=1;
+        if(ciphertext_len <= 0 || ciphertext_len > sizeof(Credential) + 32) {
+            fprintf(stderr, "Invalid ciphertext length: %d\n", ciphertext_len);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
+            return 1;
+        }
+        unsigned char ciphertext[ciphertext_len];
+        if(fread(ciphertext, ciphertext_len, 1, file) != 1) {
+            fprintf(stderr, "Error reading encrypted credential at position %d!\n", i);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
+            return 1;
+        }
+        Credential current_credential;
+        memset(&current_credential, 0, sizeof(Credential));  // Clear memory first
+        
+        int plaintext_len = decrypt_credential(ciphertext, ciphertext_len, 
+                                               key, iv, &current_credential);
+        
+        if(plaintext_len < 0) {
+            fprintf(stderr, "Decryption failed at position %d!\n", i);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
+            return 1;
+        }
+        if(strcmp(current_credential.website, argv[2]) == 0) {
+            found = 1;
             printf("\nAlias: %s\n", current_credential.alias);
             printf("Password: %s\n", current_credential.password);
+            printf("Website: %s\n", current_credential.website);
         }
+
+        memset(&current_credential, 0, sizeof(Credential));
     }
 
     if(!found) {
-        printf("No record found!\n");
+        printf("No record found for website: %s\n", argv[2]);
     }
 
     fclose(file);
+    memset(key, 0, KEY_LEN);
+    memset(iv, 0, IV_LEN);
+    
     return 0;
 }
 
