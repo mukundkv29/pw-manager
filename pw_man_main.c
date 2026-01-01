@@ -278,30 +278,26 @@ int add_credential(int argc, char *argv[]) {
         return 1;
     }
     
-    if(strlen(argv[2]) >= ALIAS_MAX_LEN) {
+    if(strlen(argv[3]) >= ALIAS_MAX_LEN) {
         fprintf(stderr, "Alias too long! Max %d characters\n", ALIAS_MAX_LEN - 1);
         free(credential);
         return 1;
     }
-    strcpy(credential->alias, argv[2]);
+    strcpy(credential->alias, argv[3]);
     
-    if(strlen(argv[3]) >= CRED_PASSWORD_MAX_LEN) {
+    if(strlen(argv[4]) >= CRED_PASSWORD_MAX_LEN) {
         fprintf(stderr, "Password too long! Max %d characters\n", CRED_PASSWORD_MAX_LEN - 1);
         free(credential);
         return 1;
     }
-    strcpy(credential->password, argv[3]);
-    
-    if(argc == 5) {
-        if(strlen(argv[4]) >= WEBSITE_MAX_LEN) {
-            fprintf(stderr, "Website too long! Max %d characters\n", WEBSITE_MAX_LEN - 1);
-            free(credential);
-            return 1;
-        }
-        strcpy(credential->website, argv[4]);
-    } else {
-        strcpy(credential->website, ".");
+    strcpy(credential->password, argv[4]);
+
+    if(strlen(argv[2]) >= WEBSITE_MAX_LEN) {
+        fprintf(stderr, "Website too long! Max %d characters\n", WEBSITE_MAX_LEN - 1);
+        free(credential);
+        return 1;
     }
+    strcpy(credential->password, argv[2]);
 
     file = fopen(filename, "rb");
     if(file == NULL) {
@@ -499,14 +495,14 @@ int main(int argc, char *argv[]) {
 
     if(argc < 2) {
         fprintf(stderr, "Invalid command\n");
-        fprintf(stderr, "See --help\n");
+        fprintf(stderr, "See help\n");
         return 1;
     }
 
     if(strcmp(argv[1], "create") == 0) {
         if(argc != 4) {
             fprintf(stderr, "Enter all arugments for create command\n");
-            fprintf(stderr, "See --help\n");
+            fprintf(stderr, "See help\n");
             return 1;
         }
         if(create_new_file(argv[2], argv[3])) {
@@ -520,7 +516,7 @@ int main(int argc, char *argv[]) {
     if(strcmp(argv[1], "read") == 0) {
         if(argc != 4) {
             fprintf(stderr, "Enter all arugments for read command\n");
-            fprintf(stderr, "See --help\n");
+            fprintf(stderr, "See help\n");
             return 1;
         }
         if(read_count(argv[2], argv[3])) {
@@ -530,10 +526,10 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if(strcmp(argv[1], "add") == 0) { // add <username> <password> <alias> <password> <website>
-        if(argc != 6 && argc != 7) {
+    if(strcmp(argv[1], "add") == 0) { // add <username> <password> <website> <alias> <password>
+        if(argc != 7) {
             fprintf(stderr, "Enter all arugments for read command\n");
-            fprintf(stderr, "See --help\n");
+            fprintf(stderr, "See help\n");
             return 1;
         }
         if(add_credential(argc-2, argv+2)) {
@@ -547,7 +543,7 @@ int main(int argc, char *argv[]) {
     if(strcmp(argv[1], "get")==0) { // get <username> <password> <website>
         if(argc != 5) {
             fprintf(stderr, "Enter all arugments for read command\n");
-            fprintf(stderr, "See --help\n");
+            fprintf(stderr, "See help\n");
             return 1;
         }
         printf("Searching records...\n");
@@ -561,7 +557,7 @@ int main(int argc, char *argv[]) {
     }
     
     fprintf(stderr, "Invalid command\n");
-    fprintf(stderr, "See --help\n");
+    fprintf(stderr, "See help\n");
 
     return 1;
 }
