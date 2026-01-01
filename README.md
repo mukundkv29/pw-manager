@@ -63,24 +63,19 @@ Check how many credentials are stored in your vault:
 Store a new password for a website or service:
 
 ```bash
-./pw_man add <username> <master_password> <alias> <password> [website]
+./pw_man add <username> <master_password> <website> <alias> <password>
 ```
 
 **Parameters:**
 - `username`: Your master username
 - `master_password`: Your master password
+- `website`: The website URL or service name
 - `alias`: A friendly name for this credential (e.g., "Gmail Account")
 - `password`: The password to store for this service
-- `website`: (Optional) The website URL or service name
-
-**Example without website:**
-```bash
-./pw_man add MyUserName MySecurePassword123 Work Email workpass123
-```
 
 **Example with website:**
 ```bash
-./pw_man add MyUserName MySecurePassword123 Gmail gmailpass456 gmail.com
+./pw_man add MyUserName MySecurePassword123 gmail.com Gmail gmailpass456
 ```
 
 ### 4. Retrieve a Stored Password
