@@ -7,6 +7,7 @@
 #include <openssl/sha.h>
 
 #include "include/pw_man_main.h"
+#include "include/version.h"
 
 void derive_key(const char *password, const unsigned char *salt, unsigned char *key, unsigned char *iv) {
     PKCS5_PBKDF2_HMAC(password, strlen(password), salt, SALT_LEN, 1000, EVP_sha256(), KEY_LEN, key);
@@ -491,12 +492,28 @@ int get_credential(int argc, char *argv[]) {
     return 0;
 }
 
+void print_usage() {
+    printf("Password Manager Version: %s\n", VER_PRODUCT_VERSION_STR);
+    printf("Usage:\n");
+    printf("\thelp                                                                          : Show this help message\n");
+    printf("\tcreate <username> <master-password>                                           : Create a new password manager file\n");
+    printf("\tread <username> <master-password>                                             : Read the count of stored credentials\n");
+    printf("\tadd <username> <master-password> <website> <alias/username> <cred_password>   : Add a new credential\n");
+    printf("\tget <username> <master-password> <website>                                    : Get credential for a website\n");
+    printf("\tversion                                                                       : Show version information\n");
+}
+
 int main(int argc, char *argv[]) {
 
     if(argc < 2) {
         fprintf(stderr, "Invalid command\n");
         fprintf(stderr, "See help\n");
         return 1;
+    }
+
+    if(strcmp(argv[1], "help") == 0) {
+        print_usage();
+        return 0;
     }
 
     if(strcmp(argv[1], "create") == 0) {
@@ -553,6 +570,28 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         printf("-----------------------------\n");
+        return 0;
+    }
+
+    if(strcmp(argv[1], "list") == 0) {
+        fprintf(stderr, "List command not implemented yet\n");
+        return 1;
+    }
+    if(strcmp(argv[1], "delete") == 0) {
+        fprintf(stderr, "Delete command not implemented yet\n");
+        return 1;
+    }
+    if(strcmp(argv[1], "update") == 0) {
+        fprintf(stderr, "Update command not implemented yet\n");
+        return 1;
+    }
+    if(strcmp(argv[1], "generate") == 0) {
+        fprintf(stderr, "Generate command not implemented yet\n");
+        return 1;
+    }
+ 
+    if(strcmp(argv[1], "version") == 0) {
+        printf("Password Manager Version: %s\n", VER_PRODUCT_VERSION_STR);
         return 0;
     }
     
