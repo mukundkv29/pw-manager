@@ -568,7 +568,7 @@ int list_credentials(int argc, char *argv[]) {
             continue;
         }
 
-        if(encrypted_cred.credential_len <= 0 || encrypted_cred.credential_len > sizeof(Credential) + 32) {
+        if(encrypted_cred.credential_len <= 0 || encrypted_cred.credential_len > ENCRYPTED_CRED_MAX_LEN) {
             fprintf(stderr, "Invalid credential length: %d\n", encrypted_cred.credential_len);
             fclose(file);
             memset(key, 0, KEY_LEN);
@@ -681,7 +681,7 @@ int delete_credential(int argc, char *argv[]) {
             continue;
         }
 
-        if(encrypted_cred.credential_len <= 0 || encrypted_cred.credential_len > sizeof(Credential) + 32) {
+        if(encrypted_cred.credential_len <= 0 || encrypted_cred.credential_len > ENCRYPTED_CRED_MAX_LEN) {
             fprintf(stderr, "Invalid credential length: %d\n", encrypted_cred.credential_len);
             fclose(file);
             memset(key, 0, KEY_LEN);
@@ -743,6 +743,180 @@ int delete_credential(int argc, char *argv[]) {
     return 0;
 }
 
+int update_credential(int argc, char *argv[]) {
+    User user;
+    strcpy(user.username, argv[0]);
+    
+    char original_password[PASSWORD_MAX_LEN];
+    strcpy(original_password, argv[1]);
+    strcpy(user.password_hash, argv[1]);
+    
+    int16_t total = check_header(&user);
+    if(total < 0) {
+        fprintf(stderr, "User authentication failed!\n");
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+
+    if(total == 0) {
+        fprintf(stderr, "No records present!\n");
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+    
+    if(strlen(argv[3]) >= ALIAS_MAX_LEN) {
+        fprintf(stderr, "New alias too long! Max %d characters\n", ALIAS_MAX_LEN - 1);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+    if(strlen(argv[4]) >= CRED_PASSWORD_MAX_LEN) {
+        fprintf(stderr, "New password too long! Max %d characters\n", CRED_PASSWORD_MAX_LEN - 1);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+
+    FILE *file = fopen(filename, "rb+");
+    if(file == NULL) {
+        fprintf(stderr, "Error while opening file!\n");
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+
+    unsigned char salt[SALT_LEN];
+    if(fseek(file, 8, SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking to salt\n");
+        fclose(file);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+    
+    if(fread(salt, SALT_LEN, 1, file) != 1) {
+        fprintf(stderr, "Error reading salt\n");
+        fclose(file);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+
+    unsigned char key[KEY_LEN];
+    unsigned char iv[IV_LEN];
+    derive_key(original_password, salt, key, iv);
+
+    if(fseek(file, sizeof(Header), SEEK_SET) != 0) {
+        fprintf(stderr, "Error seeking to credentials\n");
+        fclose(file);
+        memset(key, 0, KEY_LEN);
+        memset(iv, 0, IV_LEN);
+        memset(original_password, 0, PASSWORD_MAX_LEN);
+        return 1;
+    }
+
+    int8_t found = 0;
+    
+    for(int i = 0; i < total; i++) {
+        long current_pos = ftell(file);
+        EncryptedCredential encrypted_cred;
+        if(fread(&encrypted_cred, sizeof(EncryptedCredential), 1, file) != 1) {
+            fprintf(stderr, "Error reading encrypted credential at position %d!\n", i);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
+            return 1;
+        }
+
+        if(encrypted_cred.deleted != 0) {
+            continue;
+        }
+
+        if(encrypted_cred.credential_len <= 0 || encrypted_cred.credential_len > ENCRYPTED_CRED_MAX_LEN) {
+            fprintf(stderr, "Invalid credential length: %d\n", encrypted_cred.credential_len);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
+            return 1;
+        }
+
+        Credential current_credential;
+        memset(&current_credential, 0, sizeof(Credential));
+        
+        int plaintext_len = decrypt_credential(encrypted_cred.credential, encrypted_cred.credential_len, 
+                                               key, iv, &current_credential);
+        
+        if(plaintext_len < 0) {
+            fprintf(stderr, "Decryption failed at position %d!\n", i);
+            fclose(file);
+            memset(key, 0, KEY_LEN);
+            memset(iv, 0, IV_LEN);
+            memset(original_password, 0, PASSWORD_MAX_LEN);
+            return 1;
+        }
+
+        if(strcmp(current_credential.website, argv[2]) == 0) {
+            found = 1;
+            strcpy(current_credential.alias, argv[3]);
+            strcpy(current_credential.password, argv[4]);
+
+            unsigned char new_ciphertext[sizeof(Credential) + 16];
+            int new_ciphertext_len = encrypt_credential(&current_credential, key, iv, new_ciphertext);
+            
+            if(new_ciphertext_len < 0) {
+                fprintf(stderr, "Re-encryption failed!\n");
+                fclose(file);
+                memset(key, 0, KEY_LEN);
+                memset(iv, 0, IV_LEN);
+                memset(original_password, 0, PASSWORD_MAX_LEN);
+                return 1;
+            }
+
+            if(new_ciphertext_len > ENCRYPTED_CRED_MAX_LEN) {
+                fprintf(stderr, "Updated credential too large!\n");
+                fclose(file);
+                memset(key, 0, KEY_LEN);
+                memset(iv, 0, IV_LEN);
+                memset(original_password, 0, PASSWORD_MAX_LEN);
+                return 1;
+            }
+
+            encrypted_cred.credential_len = new_ciphertext_len;
+            memcpy(encrypted_cred.credential, new_ciphertext, new_ciphertext_len);
+            memset(encrypted_cred.credential + new_ciphertext_len, 0, ENCRYPTED_CRED_MAX_LEN - new_ciphertext_len);
+
+            if(fseek(file, current_pos, SEEK_SET) != 0) {
+                fprintf(stderr, "Error seeking back to update credential\n");
+                fclose(file);
+                memset(key, 0, KEY_LEN);
+                memset(iv, 0, IV_LEN);
+                memset(original_password, 0, PASSWORD_MAX_LEN);
+                return 1;
+            }
+            if(fwrite(&encrypted_cred, sizeof(EncryptedCredential), 1, file) != 1) {
+                fprintf(stderr, "Error updating credential\n");
+                fclose(file);
+                memset(key, 0, KEY_LEN);
+                memset(iv, 0, IV_LEN);
+                memset(original_password, 0, PASSWORD_MAX_LEN);
+                return 1;
+            }
+            printf("Credential for website %s updated.\n", argv[2]);
+            break;
+        }
+        
+        memset(&current_credential, 0, sizeof(Credential));
+    }
+
+    if(!found) {
+        printf("No active record found for website: %s\n", argv[2]);
+    }
+
+    fclose(file);
+    memset(key, 0, KEY_LEN);
+    memset(iv, 0, IV_LEN);
+    memset(original_password, 0, PASSWORD_MAX_LEN);
+    
+    return 0;
+}
+
 void print_usage() {
     printf("Password Manager Version: %s\n", VER_PRODUCT_VERSION_STR);
     printf("Usage:\n");
@@ -752,6 +926,7 @@ void print_usage() {
     printf("\tadd <username> <master-password> <website> <alias/username> <cred_password>   : Add a new credential\n");
     printf("\tget <username> <master-password> <website>                                    : Get credential for a website\n");
     printf("\tdelete <username> <master-password> <website>                                 : Delete credential for a website\n");
+    printf("\tupdate <username> <master-password> <website> <new_alias> <new_password>      : Update credential for a website\n");
     printf("\tversion                                                                       : Show version information\n");
 }
 
@@ -855,9 +1030,20 @@ int main(int argc, char *argv[]) {
         printf("-----------------------------\n");
         return 0;
     }
-    if(strcmp(argv[1], "update") == 0) {
-        fprintf(stderr, "Update command not implemented yet\n");
-        return 1;
+    if(strcmp(argv[1], "update") == 0) { // update <username> <password> <website> <new_alias> <new_password>
+        if(argc != 7) {
+            fprintf(stderr, "Enter all arguments for update command\n");
+            fprintf(stderr, "See help\n");
+            return 1;
+        }
+        printf("Updating credential...\n");
+        printf("-----------------------------\n");
+        if(update_credential(argc-2, argv+2)) {
+            fprintf(stderr, "Error while updating the credential\n");
+            return 1;
+        }
+        printf("-----------------------------\n");
+        return 0;
     }
     if(strcmp(argv[1], "generate") == 0) {
         fprintf(stderr, "Generate command not implemented yet\n");
