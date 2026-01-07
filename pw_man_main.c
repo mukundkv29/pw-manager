@@ -925,6 +925,7 @@ void print_usage() {
     printf("\tread <username> <master-password>                                             : Read the count of stored credentials\n");
     printf("\tadd <username> <master-password> <website> <alias/username> <cred_password>   : Add a new credential\n");
     printf("\tget <username> <master-password> <website>                                    : Get credential for a website\n");
+    printf("\tlist <username> <master-password>                                             : List all credentials\n");
     printf("\tdelete <username> <master-password> <website>                                 : Delete credential for a website\n");
     printf("\tupdate <username> <master-password> <website> <new_alias> <new_password>      : Update credential for a website\n");
     printf("\tversion                                                                       : Show version information\n");

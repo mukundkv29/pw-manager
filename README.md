@@ -1,7 +1,6 @@
 # Password Manager (pw-man)
 
-A secure, command-line password manager written in C that encrypts and stores user credentials locally. This project demonstrates encryption, secure password hashing, and file I/O operations.
-
+A secure, command-line password manager written in C that encrypts and stores user credentials locally.
 ### Installation of Dependencies
 
 **Ubuntu/Debian:**
@@ -43,22 +42,7 @@ Initialize a new password vault with your master credentials:
 ./pw_man create MyUserName MySecurePassword123
 ```
 
-This creates an encrypted file (`bfile.bin`) that stores all your passwords.
-
-### 2. View Total Credentials Count
-
-Check how many credentials are stored in your vault:
-
-```bash
-./pw_man read <username> <master_password>
-```
-
-**Example:**
-```bash
-./pw_man read MyUserName MySecurePassword123
-```
-
-### 3. Add a New Credential
+### 2. Add a New Credential
 
 Store a new password for a website or service:
 
@@ -78,7 +62,7 @@ Store a new password for a website or service:
 ./pw_man add MyUserName MySecurePassword123 gmail.com Gmail gmailpass456
 ```
 
-### 4. Retrieve a Stored Password
+### 3. Retrieve a Stored Password
 
 Look up a password by searching for a website:
 
@@ -100,3 +84,71 @@ Password: gmailpass456
 Website: gmail.com
 -----------------------------
 ```
+
+### 4. Retrieve all Stored Passwords
+
+```bash
+./pw_man list <username> <master_password>
+```
+
+**Example:**
+```bash
+./pw_man list MyUserName MySecurePassword123
+```
+
+**Output:**
+```
+Listing all records...
+-----------------------------
+
+Record 1:
+Alias: user
+Website: website.com
+Password: Password@123
+
+Record 2:
+Alias: user1
+Website: website2.com
+Password: Password@1234
+```
+
+
+### 5. Delete credential for a Website
+
+```bash
+./pw_man delete <username> <master_password> <website>
+```
+
+**Example:**
+```bash
+./pw_man delete MyUserName MySecurePassword123 website2.com
+```
+
+**Output:**
+```
+Deleting credential...
+-----------------------------
+Credential for website website2.com marked as deleted.
+-----------------------------
+```
+
+### 6. Update credential for a Website
+
+```bash
+./pw_man update <username> <master_password> <website> <new_alias> <new_password>
+```
+
+**Example:**
+```bash
+./pw_man delete MyUserName MySecurePassword123 website.com newUser NewPassword@123
+```
+
+**Output:**
+```
+Updating credential...
+-----------------------------
+Credential for website website.com updated.
+-----------------------------
+```
+
+
