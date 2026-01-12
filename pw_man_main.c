@@ -923,7 +923,7 @@ void print_usage() {
     printf("Password Manager Version: %s\n", VER_PRODUCT_VERSION_STR);
     printf("Usage:\n");
     printf("\thelp                                                                          : Show this help message\n");
-    printf("\tcreate <username> <master-password>                                           : Create a new password manager file\n");
+    printf("\tcreate <username>                                                             : Create a new password manager file\n");
     printf("\tread <username> <master-password>                                             : Read the count of stored credentials\n");
     printf("\tadd <username> <master-password> <website> <alias/username> <cred_password>   : Add a new credential\n");
     printf("\tget <username> <master-password> <website>                                    : Get credential for a website\n");
@@ -959,6 +959,45 @@ int get_password(char *password) {
     return len;
 }
 
+int verify_password(char *orgPassword, int orgPasswordLen) {
+    struct termios
+        attr, old;
+    char password[PASSWORD_MAX_LEN];
+    int len;
+    printf("\nRetype Password: ");
+    (void)fflush(stdout);
+
+    if (tcgetattr(STDIN_FILENO, &old) != 0) {
+        return -1;
+    }
+    attr = old;
+    attr.c_lflag &= ~ECHO;
+    attr.c_lflag |= ICANON;
+
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &attr) != 0) {
+        return -1;
+    }
+
+    len = read(STDIN_FILENO, password, PASSWORD_MAX_LEN-1);
+
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &old) != 0) {
+        return -1;
+    }
+    if(len < 0) {
+        fprintf(stderr, "Error while Capturing Password\n");
+        return 1;
+    }
+
+    if(len > 0 && password[len-1] != '\0' ) {
+        password[len-1]='\0';
+    }
+
+    if(len != orgPasswordLen ) {
+        return 1;
+    }
+    return abs(strcmp(orgPassword, password));
+}
+
 int main(int argc, char *argv[]) {
 
     if(argc < 2) {
@@ -989,6 +1028,19 @@ int main(int argc, char *argv[]) {
 
         if(len > 0 && password[len-1] != '\0' ) {
             password[len-1]='\0';
+        }
+        
+        int res = verify_password(password, len);
+        printf("\n");
+        if(res<0) {
+            fprintf(stderr, "Error while Retyping Password!\n");
+            return 1;
+        }
+
+        if(res>0) {
+            fprintf(stderr, "Retyped Password is different!\n");
+            printf("Try Again. Password and Retyped Password should be same.\n");
+            return 1;
         }
         
         if(create_new_file(argv[2], password)) {

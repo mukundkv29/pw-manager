@@ -34,12 +34,14 @@ gcc -o pw_man pw_man_main.c -lssl -lcrypto
 Initialize a new password vault with your master credentials:
 
 ```bash
-./pw_man create <username> <master_password>
+./pw_man create <username>
 ```
 
 **Example:**
 ```bash
-./pw_man create MyUserName MySecurePassword123
+./pw_man create MyUserName
+Enter Password:
+Retype Password:
 ```
 
 ### 2. Add a New Credential
