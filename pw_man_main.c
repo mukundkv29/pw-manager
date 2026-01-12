@@ -5,6 +5,8 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <termio.h>
+#include <unistd.h>
 
 #include "include/pw_man_main.h"
 #include "include/version.h"
@@ -191,7 +193,7 @@ uint16_t check_header(User *user_credentials) {
     }
 
     if(strcmp(stored_user.username, user_credentials->username) != 0) {
-        fprintf(stderr, "Invalid username!\n");
+        fprintf(stderr, "Incorrect username!\n");
         fclose(file);
         return -1;
     }
@@ -204,7 +206,7 @@ uint16_t check_header(User *user_credentials) {
                       32, input_password_hash);
     
     if(memcmp(stored_user.password_hash, input_password_hash, 32) != 0) {
-        fprintf(stderr, "Invalid password!\n");
+        fprintf(stderr, "Incorrect password!\n");
         fclose(file);
         return -1;
     }
@@ -925,10 +927,36 @@ void print_usage() {
     printf("\tread <username> <master-password>                                             : Read the count of stored credentials\n");
     printf("\tadd <username> <master-password> <website> <alias/username> <cred_password>   : Add a new credential\n");
     printf("\tget <username> <master-password> <website>                                    : Get credential for a website\n");
-    printf("\tlist <username> <master-password>                                             : List all credentials\n");
     printf("\tdelete <username> <master-password> <website>                                 : Delete credential for a website\n");
     printf("\tupdate <username> <master-password> <website> <new_alias> <new_password>      : Update credential for a website\n");
     printf("\tversion                                                                       : Show version information\n");
+}
+
+int get_password(char *password) {
+    struct  termios
+        attr, old;
+    int len;
+    printf("Enter Password: ");
+    (void)fflush(stdout);
+
+    if (tcgetattr(STDIN_FILENO, &old) != 0) {
+        return -1;
+    }
+    attr = old;
+    attr.c_lflag &= ~ECHO;
+    attr.c_lflag |= ICANON;
+
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &attr) != 0) {
+        return -1;
+    }
+
+    len = read(STDIN_FILENO, password, PASSWORD_MAX_LEN-1);
+
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &old) != 0) {
+        return -1;
+    }
+
+    return len;
 }
 
 int main(int argc, char *argv[]) {
@@ -945,12 +973,25 @@ int main(int argc, char *argv[]) {
     }
 
     if(strcmp(argv[1], "create") == 0) {
-        if(argc != 4) {
+        if(argc != 3) {
             fprintf(stderr, "Enter all arugments for create command\n");
             fprintf(stderr, "See help\n");
             return 1;
         }
-        if(create_new_file(argv[2], argv[3])) {
+
+        char password[PASSWORD_MAX_LEN];
+        int len = get_password(password);
+
+        if(len < 0) {
+            fprintf(stderr, "Error while Capturing Password\n");
+            return 1;
+        }
+
+        if(len > 0 && password[len-1] != '\0' ) {
+            password[len-1]='\0';
+        }
+        
+        if(create_new_file(argv[2], password)) {
            fprintf(stderr, "Error creating file!\n");
            return 1; 
         }
