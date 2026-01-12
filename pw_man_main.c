@@ -5,7 +5,12 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#elif
 #include <termio.h>
+#endif
 #include <unistd.h>
 
 #include "include/pw_man_main.h"
@@ -101,12 +106,6 @@ int create_new_file(char *username, char *password) {
     printf("Entered Username: %s\n", username);
     if(strlen(username) > USERNAME_MAX_LEN - 1) {
         fprintf(stderr, "Too long username!\n");
-        printf("------------------------------\n");
-        return 1;
-    }
-    printf("Entered Password: %s\n", password);
-    if(strlen(password) > PASSWORD_MAX_LEN - 1) {
-        fprintf(stderr, "Too long password!\n");
         printf("------------------------------\n");
         return 1;
     }
@@ -933,11 +932,32 @@ void print_usage() {
 }
 
 int get_password(char *password) {
+    int len;
+    
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD oldMode;
+
+    if (!GetConsoleMode(hStdin, &oldMode)) {
+        return -1;
+    }
+
+    if(!SetConsoleMode(hStdin, oldMode & ~ENABLE_ECHO_INPUT)) {
+        return -1;
+    }
+
+    if(!fgets(password, PASSWORD_MAX_LEN, stdin)) {
+        SetConsoleMode(hStdin, oldMode);
+        return -1;
+    }
+
+    SetConsoleMode(hStdin, oldMode);
+
+    len = (int)strlen(password);
+
+#elif
     struct  termios
         attr, old;
-    int len;
-    printf("Enter Password: ");
-    (void)fflush(stdout);
 
     if (tcgetattr(STDIN_FILENO, &old) != 0) {
         return -1;
@@ -955,46 +975,28 @@ int get_password(char *password) {
     if (tcsetattr(STDIN_FILENO, TCSANOW, &old) != 0) {
         return -1;
     }
-
+#endif
+    if (len > 0 && password[len-1]!='\0') {
+        password[len-1]='\0';
+        len--;
+    }
     return len;
 }
 
 int verify_password(char *orgPassword, int orgPasswordLen) {
-    struct termios
-        attr, old;
     char password[PASSWORD_MAX_LEN];
     int len;
-    printf("\nRetype Password: ");
-    (void)fflush(stdout);
 
-    if (tcgetattr(STDIN_FILENO, &old) != 0) {
+    printf("Retype Password: ");
+    fflush(stdout);
+
+    len = get_password(password);
+    if (len < 0)
         return -1;
-    }
-    attr = old;
-    attr.c_lflag &= ~ECHO;
-    attr.c_lflag |= ICANON;
 
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &attr) != 0) {
-        return -1;
-    }
-
-    len = read(STDIN_FILENO, password, PASSWORD_MAX_LEN-1);
-
-    if (tcsetattr(STDIN_FILENO, TCSANOW, &old) != 0) {
-        return -1;
-    }
-    if(len < 0) {
-        fprintf(stderr, "Error while Capturing Password\n");
+    if (len != orgPasswordLen)
         return 1;
-    }
 
-    if(len > 0 && password[len-1] != '\0' ) {
-        password[len-1]='\0';
-    }
-
-    if(len != orgPasswordLen ) {
-        return 1;
-    }
     return abs(strcmp(orgPassword, password));
 }
 
@@ -1019,19 +1021,17 @@ int main(int argc, char *argv[]) {
         }
 
         char password[PASSWORD_MAX_LEN];
+
+        printf("Enter Password: ");
+        (void)fflush(stdout);
         int len = get_password(password);
 
         if(len < 0) {
             fprintf(stderr, "Error while Capturing Password\n");
             return 1;
         }
-
-        if(len > 0 && password[len-1] != '\0' ) {
-            password[len-1]='\0';
-        }
         
         int res = verify_password(password, len);
-        printf("\n");
         if(res<0) {
             fprintf(stderr, "Error while Retyping Password!\n");
             return 1;
