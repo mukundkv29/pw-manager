@@ -1148,6 +1148,11 @@ int main(int argc, char *argv[]) {
         printf("Password Manager Version: %s\n", VER_PRODUCT_VERSION_STR);
         return 0;
     }
+
+    if(strcmp(argv[1], "restructure") == 0) {
+        printf("Restructure has not been implemented (yet)!\n");
+        return 1;
+    }
     
     fprintf(stderr, "Invalid command\n");
     fprintf(stderr, "See help\n");
